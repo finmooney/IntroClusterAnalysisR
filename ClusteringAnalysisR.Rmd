@@ -1,0 +1,167 @@
+---
+title: "Cluster Analysis"
+author: "Fin Mooney"
+date: "2023-05-09"
+output: html_document
+---
+
+## Resources
+
+### Intro to Spatial Data in R:
+
+https://cengel.github.io/R-spatial/intro.html
+
+### Point Pattern Analysis Example:
+
+http://rstudio-pubs-static.s3.amazonaws.com/481933_61ed3eff92e74c04a52d44a48b1b4548.html
+
+### Intro to Spatial Autocrrelation Analysis in R
+https://rpubs.com/quarcs-lab/spatial-autocorrelation
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+require(sp)
+require(sf)
+require(spdep)
+require(spatstat)
+require(rgdal)
+```
+
+
+
+
+
+
+
+
+## Load Vector Spatial Data
+
+```{r load vector spatial data, eval=FALSE, echo=TRUE}
+## The sp package is used to download shapefiles 
+
+#Insert the folder location that has the shapefile into st_read
+sf <- st_read("folder_path")
+
+## If you only have a tabular file with coordinates, you need to convert it into a sf object 
+
+# Create coords vector that specifies that data frame's columns for longitude and latitude
+
+df <- read.csv("file_path")
+sf <- st_as_sf(df, coords = c("POINT_X", "POINT Y"))
+
+## Attach a Coordinate System to the SF
+st_crs(sf) # Will come out as NA
+
+st_crs(sf) <- 4326 #insert the EPSF code for the projection, in this example was are using the code for WGS84
+
+## Save the created shapefile to a location on your hard drive
+
+st_write(sf, "folder_location", driver = "ESRI Shapefile")
+```
+
+``` {r spatialdataframe, eval=FALSE, echo=TRUE}
+
+## If we have a dataframe with values attached to the points we can create a SpatialPointsDataFrame object using the sp package
+
+## Need to specify coordinates
+coordinates(df) <- c("POINT_X", "POINT_Y")
+class(df)
+
+## Add spatial reference
+
+# The rgdal package is needed to save the sp object as a shapefile with a coordinate system 
+
+proj4string(df) <- CRS("+init=epsg:4326") # this is WGS84
+is.projected(df) 
+
+```
+
+## Visualize SF Object
+
+``` {r visualize sf object, eval=FALSE, echo=TRUE}
+
+# To vilsualize SF object we can use ggplot2 for basic mapping or the leaflet package for web mapping
+
+ggplot(sf, aes(name_of_column_with_x_value, name_of_column_with_y_value)) +
+  geom_point()
+
+# OR
+
+ggplot(sf) + 
+  geom_sf(aes(fill=vaule_column)) # sf must be sf_object
+
+```
+
+## K and L Plots
+
+- K Plot = Summarizies the distance between points for all distances
+- K values above K expected: clustering of points at given distance band
+- K Values below K expected: dispersion of points at a given distance band
+
+
+- L Plot = Helps determine small differences between K and K-expected
+- L values above zero : clustering of points at a given distance band
+- L values below zero : dispersion of points at a given distance band (i.e., inhibition)
+
+## Setting Up Spatstat Object
+
+```{r Spatstat, eval=FALSE, echo=TRUE}
+## The spatstat package requires that your point data be transformed into ppp object
+
+# need to create a window for the boundary of the point
+win <- as.owin(sf_boundary) # insert boundary (e.g, census tract, country) of the points, note: boundary must be a sf object
+
+class(win) #check it worked
+
+# Get the coordinates of the point data
+coords <- st_coordinates(sf_points)
+head(coords)
+
+p <- ppp(coords[,1], coords[,2], window=win)
+par(mai=c(0,0,0,0))
+plot(p) # plot the ppp object
+```
+
+## K-plot
+
+```{r Kplot, eval=FALSE, echo=TRUE}
+# Calculate the K-function
+K <- Kest(p)
+
+# Plot the K-function
+plot(K, main = "K-function for Points")
+```
+
+## L-Plot
+
+``` {r lplot, eval=FALSE, echo=TRUE}
+# Calculate the L-function
+ L <- Lest(p)
+
+# Plot the L-Function
+ plot(L, main="L-Function for Points")
+
+```
+
+## GLobal Moran's I 
+- Measure of spatial autocorrelation 
+- Compare clustering of points across areas
+- Ranges from -1 (indicating perfect negative spatial autocorrelation) to 1 (indicating perfect positive spatial autocorrelation), with 0 indicating no spatial autocorrelation. 
+- Significant positive Moran's I indicates that high values of the variable tend to cluster together, while a significant negative Moran's I indicates that low values of the variable tend to cluster together.
+
+``` {r GlobalMoransI, eval=FALSE, echo=TRUE}
+# Need coordiantes of your points
+coords <- st_coordinates(points)
+
+# Create a spatial weights matrix, when conducting a GLobal Moran's I on points we will need to use distance-based weights
+
+dists <- dnearneigh(coords, 0, 100) # create a neighbor list with 100-meter radius
+# The distance is up to your discretion, you could find the average distance between points and use that as the radius
+
+
+weights <- nb2listw(dists, style = "B") # points are on a binary, 1 if they are within your radius, 0 if not
+
+moran.test(x = points$numeric_vector, listw=weights, zero.policy=T)
+# x must be a numeric variable in the points data frame
+
+```
